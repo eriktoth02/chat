@@ -1,0 +1,28 @@
+# .NET build output
+bin/
+obj/
+out/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+*.DotSettings.user
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App secrets (keep appsettings.json defaults, ignore local overrides)
+appsettings.*.local.json
+
+# Uploaded attachments (created at runtime)
+src/ChatApi/wwwroot/uploads/
