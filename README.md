@@ -1,34 +1,34 @@
 # Chat – real-time chat application
 
-A simple real-time chat app built with **C# / .NET 8**:
+A real-time chat application built with **C# / .NET 8**:
 
 - **ChatApi** – ASP.NET Core REST API + Entity Framework Core + MySQL
 - **ChatClient** – WPF desktop client (MVVM)
 
-Everything runs locally. The client stays "real-time" by polling the API for new
-messages, presence and typing status on short intervals, using incremental
-(`afterId`) requests so the API load stays low.
+Everything runs locally. The client stays "real-time" by polling the API on short
+intervals using incremental (`afterId`) requests, so new messages, presence and
+typing status arrive quickly while keeping the API load low.
 
 ---
 
 ## Features
 
 - Registration & login (PBKDF2-hashed passwords, bearer-token sessions)
-- Editable **profile** (display name + change password)
-- Multiple chat rooms (create new rooms on the fly)
-- Message history with **load-older-on-scroll** and **date dividers**
-- **Edit your own messages** (propagated to other clients)
-- **Attachments** – send images (shown inline) and files (open in browser)
-- **Emoji** quick bar, **new-message sound**, **offline/reconnect** indicator
+- Editable **profile** – display name + change password
+- Multiple **chat rooms**, created on the fly
+- Message **history** with load-older-on-scroll and **date dividers**
+- **Edit your own messages** (changes propagate to other clients)
+- **Attachments** – images are shown inline, other files open in the browser
+- **Emoji** quick bar, **new-message sound**, and an **offline/reconnect** indicator
 - **Smart auto-scroll** with a "new messages" pill when scrolled up
-- Online users per room + "is typing…" indicator
+- **Online users** per room and an **"is typing…"** indicator
 - **Direct messages** (1:1) with **delivered / read** receipts and unread badges
-- Clean dark MVVM WPF UI
-- xUnit test project for the API (`tests/ChatApi.Tests`)
+- Clean dark **MVVM** WPF UI
+- **Unit tests** for the API (`tests/ChatApi.Tests`)
 
-> The API upgrades the database schema automatically on startup (adds new
-> columns / the direct-messages table), so you never need to drop the database
-> between versions.
+> The API upgrades the database schema automatically on startup (adds any new
+> columns and the direct-messages table), so the database never needs to be
+> dropped between versions.
 
 ---
 
@@ -36,18 +36,20 @@ messages, presence and typing status on short intervals, using incremental
 
 ```
 WPF client  ──HTTP/JSON──►  ASP.NET Core REST API  ──EF Core──►  MySQL
-   (polls every 1–3s)            (ChatApi)                       (chatapp)
+  (MVVM, polling)               (ChatApi)                        (chatapp)
 ```
 
-Real-time is approximated with three timers in the client:
+The client uses several timers to feel real-time without overloading the API:
 
-| Timer        | Interval | Purpose                                  |
-|--------------|----------|------------------------------------------|
-| Messages     | 1 s      | `GET /messages?afterId=` – only new rows |
-| Presence     | 2 s      | who is online / typing                   |
-| Heartbeat    | 3 s      | report "I'm alive" + current room        |
+| Timer      | Interval | Purpose                                             |
+|------------|----------|-----------------------------------------------------|
+| Messages   | 1 s      | `GET /messages?afterId=` – fetch only new rows      |
+| Presence   | 2 s      | who is online / typing + direct-message unread counts |
+| Heartbeat  | 3 s      | report "I'm alive" + current room                   |
+| Reconcile  | 3 s      | re-check the latest page so edits by others show up |
 
 Typing notifications are throttled to at most one request every 2 seconds.
+Direct-message conversations poll once per second while their window is open.
 
 ---
 
@@ -59,12 +61,12 @@ Typing notifications are throttled to at most one request every 2 seconds.
 
 ---
 
-## Setup
+## Getting started
 
 ### 1. Database
 
 The API **creates the database and tables automatically** on first run, so you
-only need a reachable MySQL server. Update the connection string in
+only need a reachable MySQL server. Adjust the connection string in
 `src/ChatApi/appsettings.json` if your credentials differ:
 
 ```json
@@ -73,7 +75,8 @@ only need a reachable MySQL server. Update the connection string in
 }
 ```
 
-(If you prefer to create the schema by hand, run `db/schema.sql`.)
+A `docker-compose.yml` is included if you prefer to run MySQL in a container
+(`docker compose up -d`). The reference schema is in `db/schema.sql`.
 
 ### 2. Run the API
 
@@ -82,8 +85,8 @@ cd src/ChatApi
 dotnet run
 ```
 
-The API listens on **http://localhost:5099**. Swagger UI is available at
-`http://localhost:5099/swagger` for trying the endpoints.
+The API listens on **http://localhost:5099**. Swagger UI (for trying the
+endpoints) is at `http://localhost:5099/swagger`.
 
 ### 3. Run the WPF client
 
@@ -94,38 +97,36 @@ cd src/ChatClient
 dotnet run
 ```
 
-Register a user, then log in. To test real-time chat, launch a **second**
-instance of the client and log in as a different user.
-
-> The client expects the API at `http://localhost:5099` (see
-> `App.ApiBaseUrl` in `src/ChatClient/App.xaml.cs`).
+Register a user and log in. To test real-time chat, launch a **second** client
+instance and log in as a different user. The client expects the API at
+`http://localhost:5099` (see `App.ApiBaseUrl` in `src/ChatClient/App.xaml.cs`).
 
 ---
 
 ## API reference
 
 All endpoints except register/login require an
-`Authorization: Bearer {token}` header (token returned by register/login).
+`Authorization: Bearer {token}` header (the token is returned by register/login).
 
-| Method | Route                                   | Body / Query              | Description                |
-|--------|-----------------------------------------|---------------------------|----------------------------|
-| POST   | `/api/auth/register`                    | `{username, password}`    | Create account, get token  |
-| POST   | `/api/auth/login`                       | `{username, password}`    | Log in, get token          |
-| POST   | `/api/auth/logout`                      | –                         | Invalidate token           |
-| PUT    | `/api/auth/profile`                     | `{displayName,newPassword}` | Update profile           |
-| GET    | `/api/rooms`                            | –                         | List rooms                 |
-| POST   | `/api/rooms`                            | `{name}`                  | Create room                |
-| GET    | `/api/rooms/{id}/messages`              | `?afterId=0&beforeId=0`   | Messages (incremental/history) |
-| POST   | `/api/rooms/{id}/messages`              | `{content}`               | Send a message             |
-| PUT    | `/api/rooms/{id}/messages/{msgId}`      | `{content}`               | Edit own message           |
-| POST   | `/api/rooms/{id}/attachments`           | multipart `file`          | Upload an attachment       |
-| POST   | `/api/presence/heartbeat`               | `{roomId}`                | Report alive + room        |
-| POST   | `/api/presence/typing`                  | `{roomId}`                | Report typing              |
-| GET    | `/api/rooms/{id}/presence`              | –                         | Online users + typing      |
-| GET    | `/api/dm/overview`                      | –                         | Users + unread DM counts   |
-| GET    | `/api/dm/{userId}/messages`             | `?afterId=0`              | DM conversation            |
-| POST   | `/api/dm/{userId}`                      | `{content}`               | Send a direct message      |
-| POST   | `/api/dm/{userId}/read`                 | –                         | Mark DMs from user as read |
+| Method | Route                                | Body / Query                | Description                    |
+|--------|--------------------------------------|-----------------------------|--------------------------------|
+| POST   | `/api/auth/register`                 | `{username, password}`      | Create account, get token      |
+| POST   | `/api/auth/login`                    | `{username, password}`      | Log in, get token              |
+| POST   | `/api/auth/logout`                   | –                           | Invalidate token               |
+| PUT    | `/api/auth/profile`                  | `{displayName, newPassword}`| Update profile                 |
+| GET    | `/api/rooms`                         | –                           | List rooms                     |
+| POST   | `/api/rooms`                         | `{name}`                    | Create room                    |
+| GET    | `/api/rooms/{id}/messages`           | `?afterId=0&beforeId=0`     | Messages (incremental/history) |
+| POST   | `/api/rooms/{id}/messages`           | `{content}`                 | Send a message                 |
+| PUT    | `/api/rooms/{id}/messages/{msgId}`   | `{content}`                 | Edit own message               |
+| POST   | `/api/rooms/{id}/attachments`        | multipart `file`            | Upload an attachment           |
+| POST   | `/api/presence/heartbeat`            | `{roomId}`                  | Report alive + current room    |
+| POST   | `/api/presence/typing`               | `{roomId}`                  | Report typing                  |
+| GET    | `/api/rooms/{id}/presence`           | –                           | Online users + typing          |
+| GET    | `/api/dm/overview`                   | –                           | Users + unread DM counts       |
+| GET    | `/api/dm/{userId}/messages`          | `?afterId=0`                | DM conversation                |
+| POST   | `/api/dm/{userId}`                   | `{content}`                 | Send a direct message          |
+| POST   | `/api/dm/{userId}/read`              | –                           | Mark DMs from user as read     |
 
 ---
 
@@ -133,23 +134,26 @@ All endpoints except register/login require an
 
 ```
 ChatApp.sln
+docker-compose.yml           # optional MySQL container
 db/
   schema.sql                 # reference SQL (API auto-creates tables)
 src/
   ChatApi/                   # ASP.NET Core REST API
-    Controllers/             # Auth, Rooms, Messages, Presence
+    Controllers/             # Auth, Rooms, Messages, Attachments, Presence, DirectMessages
     Data/AppDbContext.cs     # EF Core context
-    Models/                  # User, Room, Message
+    Models/                  # User, Room, Message, DirectMessage
     Dtos/Dtos.cs             # request/response records
     Security/PasswordHasher.cs
-    Program.cs
+    Program.cs               # startup, DB create/upgrade, static files
     appsettings.json
   ChatClient/                # WPF desktop client (MVVM)
     Models/ApiModels.cs
     Services/ChatApiClient.cs
-    ViewModels/              # ChatViewModel, RelayCommand, ...
-    Views/                   # LoginWindow, MainWindow
+    ViewModels/              # ChatViewModel, DirectChatViewModel, item + base types
+    Views/                   # Login, Main, Profile, DirectChat windows
     App.xaml(.cs)
+tests/
+  ChatApi.Tests/             # xUnit tests (password hashing, auth controller)
 ```
 
 ---
@@ -165,26 +169,11 @@ validation) using EF Core's in-memory provider.
 
 ---
 
-## Publish to GitHub
-
-From the project root (`H:\Projects\chat`):
-
-```bash
-git init
-git add .
-git commit -m "Initial commit: WPF chat app + ASP.NET REST API + MySQL"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<repo>.git
-git push -u origin main
-```
-
-Create the empty **public** repo on GitHub first, then run the commands above.
-
----
-
 ## Notes & possible improvements
 
-- Tokens are stored in the `Users` table; for production use JWT with expiry.
-- Polling could be swapped for **SignalR/WebSockets** for true push without
-  changing the data model.
-- No message editing/deletion or file attachments (kept intentionally simple).
+- Sessions use a token stored on the user row; a production app would use JWT
+  with expiry and refresh.
+- Polling could be replaced with **SignalR / WebSockets** for true server push
+  without changing the data model.
+- Attachments are stored on the server's local disk under `wwwroot/uploads`.
+```
